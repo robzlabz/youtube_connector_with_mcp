@@ -1,0 +1,21 @@
+{
+  "name": "youtube-connector",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local OAuth connector for YouTube: connect a Google account, see the token, upload/manage videos, and expose everything as a Streamable HTTP MCP server.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "multer": "^2.0.2",
+    "zod": "^4.6.7"
+  }
+}

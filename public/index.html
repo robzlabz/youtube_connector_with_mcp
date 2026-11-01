@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>YouTube Connector</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot"></span>
+        <span>YouTube Connector</span>
+      </div>
+      <select id="accountSelect" class="account-select" aria-label="Active YouTube account" hidden></select>
+      <button id="addAccountBtn" class="btn" hidden>+ Add account</button>
+      <span id="statusPill" class="pill pill--muted">checking…</span>
+    </header>
+
+    <main>
+      <div id="banner" class="banner" hidden></div>
+
+      <!-- 1. not connected -->
+      <section id="connectCard" class="card" hidden>
+        <h1>Connect to YouTube</h1>
+        <p class="muted">
+          Authorize this app with your Google account. Google redirects back to
+          <code id="redirectUri">http://localhost:3000/oauth2callback</code>, the app stores the token
+          locally and shows it to you.
+        </p>
+        <ul class="steps">
+          <li>Credentials are read from <code>.env</code> (Google Cloud Console → OAuth client).</li>
+          <li>You grant the <code>youtube</code> scope (upload + manage).</li>
+          <li>Tokens are written to <code>data/tokens.json</code> (mode 600), one entry per channel.</li>
+          <li>Connect as many channels as you want — each consent adds one account.</li>
+          <li>Already have a token from another machine? Paste it in <strong>Import / export token</strong>.</li>
+        </ul>
+        <button id="connectBtn" class="btn btn--primary">Connect to YouTube</button>
+        <p id="connectHint" class="hint"></p>
+      </section>
+
+      <!-- 2. connected -->
+      <section id="accountCard" class="card" hidden>
+        <div class="account">
+          <img id="channelAvatar" class="avatar" alt="" hidden />
+          <div>
+            <h1 id="channelTitle">YouTube account</h1>
+            <p id="channelMeta" class="muted"></p>
+          </div>
+          <div class="spacer"></div>
+          <button id="refreshTokenBtn" class="btn">Refresh token</button>
+          <button id="disconnectBtn" class="btn btn--danger">Disconnect this account</button>
+        </div>
+
+        <h2 class="section-title">Token</h2>
+        <div class="token-grid">
+          <div class="field">
+            <label for="accessToken">Access token</label>
+            <div class="token-row">
+              <input id="accessToken" class="mono" readonly value="" />
+              <button class="btn btn--ghost" data-reveal="accessToken">Reveal</button>
+              <button class="btn btn--ghost" data-copy="accessToken">Copy</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="refreshToken">Refresh token</label>
+            <div class="token-row">
+              <input id="refreshToken" class="mono" readonly value="" />
+              <button class="btn btn--ghost" data-reveal="refreshToken">Reveal</button>
+              <button class="btn btn--ghost" data-copy="refreshToken">Copy</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Expires</label>
+            <div id="tokenExpiry" class="value"></div>
+          </div>
+          <div class="field">
+            <label>Scopes</label>
+            <div id="tokenScope" class="value mono small"></div>
+          </div>
+        </div>
+        <p class="hint">
+          Use it from anywhere: <code>Authorization: Bearer &lt;access token&gt;</code>.
+          Example: <code>curl -H "Authorization: Bearer $TOKEN" "https://www.googleapis.com/youtube/v3/channels?part=snippet&amp;mine=true"</code>
+        </p>
+      </section>
+
+      <!-- 2b. import / export token (copy-paste between machines) -->
+      <section id="transferCard" class="card" hidden>
+        <h2>Import / export token</h2>
+        <p class="muted small">
+          Copy a token here and paste it on another machine (local ↔ server) to connect the same
+          account without repeating the OAuth flow. The JSON holds
+          <code>access_token</code> + <code>refresh_token</code> — treat it as a secret.
+        </p>
+
+        <h3 class="sub-title">Copy out</h3>
+        <div class="actions">
+          <button id="copyActiveTokenBtn" class="btn">Copy this account</button>
+          <button id="copyAllTokensBtn" class="btn">Copy all accounts</button>
+          <span id="exportStatus" class="hint"></span>
+        </div>
+        <div class="field">
+          <label for="exportArea">Export (paste-ready JSON)</label>
+          <textarea id="exportArea" class="mono" rows="6" readonly
+            placeholder="Click a copy button — the JSON also appears here, ready to select and copy."></textarea>
+        </div>
+
+        <h3 class="sub-title">Paste in</h3>
+        <div class="field">
+          <label for="importArea">Token JSON</label>
+          <textarea id="importArea" class="mono" rows="6"
+            placeholder='{"access_token":"ya29...","refresh_token":"1//...","expiry_date":1793490753103}'></textarea>
+        </div>
+        <div class="actions">
+          <button id="importBtn" class="btn btn--primary">Import token</button>
+          <button id="importFileBtn" class="btn">Load from file…</button>
+          <input id="importFile" type="file" accept=".json,application/json" hidden />
+          <span id="importStatus" class="hint"></span>
+        </div>
+      </section>
+
+      <!-- 3. upload -->
+      <section id="uploadCard" class="card" hidden>
+        <h2>Upload video</h2>
+        <form id="uploadForm">
+          <div class="field">
+            <label for="videoFile">Video file</label>
+            <input id="videoFile" name="video" type="file" accept="video/*" required />
+            <span id="fileInfo" class="hint"></span>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label for="title">Title</label>
+              <input id="title" name="title" maxlength="100" placeholder="My video" required />
+            </div>
+            <div class="field">
+              <label for="privacyStatus">Privacy</label>
+              <select id="privacyStatus" name="privacyStatus">
+                <option value="private" selected>private</option>
+                <option value="unlisted">unlisted</option>
+                <option value="public">public</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" rows="4" maxlength="5000"></textarea>
+          </div>
+          <div class="grid-3">
+            <div class="field">
+              <label for="tags">Tags (comma separated)</label>
+              <input id="tags" name="tags" placeholder="tutorial, demo" />
+            </div>
+            <div class="field">
+              <label for="categoryId">Category</label>
+              <select id="categoryId" name="categoryId">
+                <option value="22" selected>People &amp; Blogs</option>
+                <option value="27">Education</option>
+                <option value="28">Science &amp; Technology</option>
+                <option value="20">Gaming</option>
+                <option value="10">Music</option>
+                <option value="24">Entertainment</option>
+                <option value="26">Howto &amp; Style</option>
+                <option value="25">News &amp; Politics</option>
+                <option value="23">Comedy</option>
+                <option value="17">Sports</option>
+                <option value="19">Travel &amp; Events</option>
+                <option value="15">Pets &amp; Animals</option>
+                <option value="2">Autos &amp; Vehicles</option>
+                <option value="1">Film &amp; Animation</option>
+                <option value="29">Nonprofits &amp; Activism</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="playlistId">Add to playlist (optional)</label>
+              <select id="playlistId" name="playlistId">
+                <option value="">— none —</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label for="publishAt">Schedule publish (optional)</label>
+              <input id="publishAt" name="publishAt" type="datetime-local" />
+            </div>
+            <label class="checkbox">
+              <input id="madeForKids" name="madeForKids" type="checkbox" value="true" />
+              Made for kids
+            </label>
+          </div>
+          <div class="actions">
+            <button id="uploadBtn" class="btn btn--primary" type="submit">Upload</button>
+            <div id="progressWrap" class="progress" hidden>
+              <div id="progressBar" class="progress__bar"></div>
+            </div>
+            <span id="uploadStatus" class="hint"></span>
+          </div>
+        </form>
+      </section>
+
+      <!-- 4. manage -->
+      <section id="videosCard" class="card" hidden>
+        <div class="card-head">
+          <h2>Your videos</h2>
+          <button id="reloadVideosBtn" class="btn">Reload</button>
+        </div>
+        <div id="videoList" class="video-list"></div>
+        <div class="actions">
+          <button id="loadMoreBtn" class="btn" hidden>Load more</button>
+        </div>
+      </section>
+
+      <section id="playlistsCard" class="card" hidden>
+        <h2>Playlists</h2>
+        <form id="playlistForm" class="inline-form">
+          <input id="newPlaylistTitle" placeholder="New playlist title" required />
+          <select id="newPlaylistPrivacy">
+            <option value="private" selected>private</option>
+            <option value="unlisted">unlisted</option>
+            <option value="public">public</option>
+          </select>
+          <button class="btn" type="submit">Create playlist</button>
+        </form>
+        <ul id="playlistList" class="playlist-list"></ul>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
